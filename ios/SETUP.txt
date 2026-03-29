@@ -3,7 +3,7 @@ Native iOS app (SwiftUI) for Inbox Brief
 
 The app needs a URL your phone can reach on cellular or any Wi‑Fi.
 
-• Production: host the Python API on Railway/Fly/Render/etc. (repo README). Paste that https base URL in the app (you may omit the https:// prefix).
+• This repo’s production API: https://inbox-brief.onrender.com (pre-filled in the iOS app). For another host, change Server URL in the app (you may omit the https:// prefix).
 
 • Quick test before deploy: run the API on your Mac, then use a tunnel (ngrok, Cloudflare Tunnel, localtunnel) to get a public https URL and paste that in the app. Plain http://192.168.x.x only works while the phone is on the same LAN as the Mac.
 

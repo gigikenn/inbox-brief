@@ -1,6 +1,9 @@
 import Foundation
 
 enum BriefFetcher {
+    /// Default production API on Render. Used when Server URL is blank (e.g. Siri before first open).
+    static let defaultAPIBaseURL = "https://inbox-brief.onrender.com"
+
     /// Keys must match `@AppStorage` in `ContentView`.
     /// Digest runs OpenAI + Graph on the server; default `URLSession` timeouts are often too short.
     private static let session: URLSession = {
@@ -37,15 +40,10 @@ enum BriefFetcher {
     }
 
     static func fetchSpokenBrief() async throws -> String {
-        let raw = UserDefaults.standard.string(forKey: "apiBaseURL") ?? ""
+        let stored = (UserDefaults.standard.string(forKey: "apiBaseURL") ?? "")
+            .trimmingCharacters(in: .whitespaces)
+        let raw = stored.isEmpty ? defaultAPIBaseURL : stored
         let base = normalizeBaseURL(raw)
-        guard !base.isEmpty else {
-            throw NSError(
-                domain: "InboxBrief",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Set Server URL to your hosted API (e.g. https://….railway.app) — the same address where /digest works in a browser."]
-            )
-        }
         guard var comp = URLComponents(string: base + "/digest/spoken") else {
             throw NSError(
                 domain: "InboxBrief",

@@ -1,5 +1,7 @@
 # Outlook AI Email Briefing
 
+**Deployed API (this project):** [https://inbox-brief.onrender.com](https://inbox-brief.onrender.com) — mobile shell: `/mobile`, spoken brief: `/digest/spoken`.
+
 Small FastAPI service that:
 - Reads unread Outlook inbox emails
 - Ignores senders/domains you define

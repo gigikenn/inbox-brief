@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 struct ContentView: View {
-    @AppStorage("apiBaseURL") private var apiBaseURL = ""
+    @AppStorage("apiBaseURL") private var apiBaseURL = BriefFetcher.defaultAPIBaseURL
     @AppStorage("accessKey") private var accessKey = ""
     @State private var spokenText = ""
     @State private var loading = false
@@ -14,7 +14,7 @@ struct ContentView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Server URL (no trailing slash)", text: $apiBaseURL, prompt: Text("https://your-app.up.railway.app"))
+                    TextField("Server URL (no trailing slash)", text: $apiBaseURL, prompt: Text(BriefFetcher.defaultAPIBaseURL))
                         .textInputAutocapitalization(.never)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
