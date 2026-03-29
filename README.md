@@ -139,6 +139,22 @@ The app only needs a small always-on host plus **persistent disk** for `ms_token
 
 5. **Phone / Siri:** Use `https://YOUR_HOST/digest/spoken?access_key=...` in Shortcuts and the mobile page as above.
 
+### Render: keep Microsoft sign-in across deploys
+
+Tokens live in **`ms_token_cache.json`** under **`DATA_DIR`**. The Docker image uses **`DATA_DIR=/data`**. If the container has **no persistent disk**, every deploy starts with an empty filesystem → you must run **`/auth/start`** and **`/auth/complete`** again.
+
+**If you already have a Render Web Service** (e.g. `inbox-brief`):
+
+1. Open the service in the [Render Dashboard](https://dashboard.render.com/).
+2. Go to **Disks** (or **Persistence**).
+3. **Add disk** with **Mount path** exactly **`/data`**. **1 GB** is enough.
+4. Save (Render will redeploy).
+5. **Sign in once more** with `auth/start` + `auth/complete` so the token file is written **on that disk**. Later deploys will reuse it.
+
+Persistent disks may require a **paid** instance type on Render; if **Disks** is disabled on your plan, upgrade the service or use another host with a volume.
+
+**Blueprint:** The repo root **`render.yaml`** defines the same **`/data`** disk for **New → Blueprint** setups (set all env vars in the dashboard or in the YAML as needed).
+
 ## Behavior Notes
 
 - The service only fetches unread inbox messages.

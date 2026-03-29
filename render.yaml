@@ -1,0 +1,13 @@
+# Render Blueprint — optional. See README "Render: persistent disk".
+# New Blueprint: Dashboard → New → Blueprint → connect this repo.
+# Existing manual Web Service: add a disk in the dashboard instead (same mount path).
+services:
+  - type: web
+    name: inbox-brief
+    runtime: docker
+    branch: main
+    healthCheckPath: /health
+    disk:
+      name: msal-cache
+      mountPath: /data
+      sizeGB: 1
