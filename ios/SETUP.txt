@@ -1,0 +1,32 @@
+Native iOS app (SwiftUI) for Inbox Brief
+=========================================
+
+The app needs a URL your phone can reach on cellular or any Wi‑Fi.
+
+• Production: host the Python API on Railway/Fly/Render/etc. (repo README). Paste that https base URL in the app (you may omit the https:// prefix).
+
+• Quick test before deploy: run the API on your Mac, then use a tunnel (ngrok, Cloudflare Tunnel, localtunnel) to get a public https URL and paste that in the app. Plain http://192.168.x.x only works while the phone is on the same LAN as the Mac.
+
+A) Generate Xcode project (recommended)
+-----------------------------------------
+1. Install:  brew install xcodegen
+2. Run:     cd ios && xcodegen generate
+3. Open:    InboxBrief.xcodeproj in Xcode
+4. Plug in iPhone, select it as run destination, press Run (⌘R)
+5. First launch: paste your HTTPS API base URL (no trailing slash) and optional access key
+6. Siri: after one successful open, try "Hey Siri, Summarise inbox in Inbox Brief" (train phrase in Settings → Siri if needed)
+
+B) Without xcodegen
+------------------
+1. Xcode → File → New → Project → App (iOS, SwiftUI)
+2. Name: Inbox Brief, bundle ID e.g. com.ariete.inboxbrief
+3. Delete default ContentView if duplicated
+4. Drag the folder ios/InboxBrief/*.swift and Assets + Info.plist into the project (copy if needed)
+5. In target Build Settings: set Info.plist path to your Info.plist, turn off auto-generated Info.plist if Xcode complains
+6. Add App Icons in Assets (1024 for App Store; simulator may run without)
+
+Siri phrases are registered via AppShortcutsProvider in InboxBriefIntents.swift.
+
+App Store
+---------
+Requires Apple Developer Program ($99/yr), privacy strings if you add tracking, and proper App Icon assets.

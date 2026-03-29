@@ -1,0 +1,9 @@
+.venv
+__pycache__
+.git
+*.md
+.env
+ms_token_cache.json
+ms_device_flow.json
+state.db
+.pycache

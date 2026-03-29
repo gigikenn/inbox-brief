@@ -1,0 +1,24 @@
+# Install Xcode, then: brew install xcodegen && cd ios && xcodegen generate
+# Open InboxBrief.xcodeproj, select your iPhone, Run.
+
+name: InboxBrief
+options:
+  bundleIdPrefix: com.ariete
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+targets:
+  InboxBrief:
+    type: application
+    platform: iOS
+    sources:
+      - path: InboxBrief
+        excludes:
+          - Info.plist
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.ariete.inboxbrief
+      TARGETED_DEVICE_FAMILY: "1,2"
+      GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_FILE: InboxBrief/Info.plist
