@@ -14,7 +14,7 @@ import msal
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from openai import OpenAI
-from starlette.responses import HTMLResponse, PlainTextResponse
+from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 load_dotenv()
 
@@ -481,6 +481,12 @@ MOBILE_APP_HTML = """<!DOCTYPE html>
   </script>
 </body>
 </html>"""
+
+
+@app.get("/")
+def root() -> RedirectResponse:
+    """Bare domain has no landing page; send browsers to the mobile shell."""
+    return RedirectResponse(url="/mobile", status_code=307)
 
 
 @app.get("/health")
