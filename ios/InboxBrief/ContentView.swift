@@ -36,7 +36,7 @@ struct ContentView: View {
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .disabled(loading || apiBaseURL.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(loading)
 
                     if !spokenText.isEmpty {
                         Button("Read aloud again") {
