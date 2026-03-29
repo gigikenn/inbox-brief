@@ -43,6 +43,23 @@ GRAPH_MESSAGES_INBOX = (
 GRAPH_ME_URL = "https://graph.microsoft.com/v1.0/me"
 GRAPH_MAIL_PROBE_URL = "https://graph.microsoft.com/v1.0/me/messages?$top=1&$select=id,subject"
 
+# When the model under-triages: meeting/call/scheduling language still needs a reply.
+MEETING_OR_SCHEDULE_ASK_RE = re.compile(
+    r"\b("
+    r"meet(\s*up)?|meeting|schedule|calendar|book\s+(a\s+)?(time|slot|meeting)|"
+    r"availab|free\s+(on|this|next|tomorrow|today)|zoom|teams\s+meet|google\s+meet|"
+    r"video\s*call|phone\s*call|catch\s*up|sync\s*up|grab\s+coffee|"
+    r"time\s+that\s+works|when\s+(can|could)\s+we|let'?s\s+connect|"
+    r"can\s+we\s+(meet|talk|chat|hop\s+on)"
+    r")\b",
+    re.I,
+)
+TRIAGE_URGENCY_RE = re.compile(
+    r"\b(urgent|asap|a\.s\.a\.p\.|eod|end\s+of\s+day|today|tomorrow|this\s+week|"
+    r"deadline|time[\s-]*sensitive|as\s+soon\s+as)\b",
+    re.I,
+)
+
 
 @dataclass
 class Settings:
@@ -216,6 +233,22 @@ def should_ignore(sender: str, settings: Settings) -> bool:
     return bool(domain and domain in settings.ignore_domains)
 
 
+def refine_triage_with_heuristics(email: dict[str, Any], ai: dict[str, str]) -> dict[str, str]:
+    """Correct common model mistakes: real meeting/scheduling asks must not be ignore/low."""
+    blob = clean_text(f"{email.get('subject', '')} {email.get('bodyPreview', '')}")
+    out = dict(ai)
+    if not MEETING_OR_SCHEDULE_ASK_RE.search(blob):
+        return out
+    urgent = bool(TRIAGE_URGENCY_RE.search(blob))
+    if out.get("action") == "ignore":
+        out["action"] = "respond"
+        out["priority"] = "high" if urgent else "medium"
+        out.setdefault("reason", "Meeting or scheduling request.")
+    elif out.get("priority") == "low":
+        out["priority"] = "high" if urgent else "medium"
+    return out
+
+
 def _check_digest_access(access_key: str | None, settings: Settings) -> None:
     if not settings.digest_access_key:
         return
@@ -268,21 +301,29 @@ def classify_emails_batch(
         )
 
     system = (
-        "You triage work email. For EACH item you MUST write an original summary in your own words — "
-        "never copy or paste the preview text; paraphrase what the sender wants.\n"
+        "You triage work email. Evaluate EACH item by its own id independently — never give every message "
+        "the same action or priority.\n"
+        "For EACH item you MUST write an original summary in your own words — never copy or paste the preview; "
+        "paraphrase what the sender wants.\n"
         "Rules per item:\n"
         "- summary: max 2 short sentences OR 240 characters, whichever is shorter. Plain language. "
-        "Never include email addresses or domains in the summary; refer to people by context only if needed.\n"
+        "Never include email addresses or domains in the summary.\n"
         "- action: exactly one of: respond, ignore, confirmation.\n"
-        "  • respond = they need a reply, decision, or real follow-up from you.\n"
-        "  • ignore = nothing to do (noise, FYI, auto mail, or no real request). Trivial or empty content "
-        "(e.g. subject/body is only \"test\", \"hi\", \"ok\", placeholders, or has no ask) → ignore, not respond.\n"
-        "  • confirmation = receipt, order, code, verification, calendar accept-type notices.\n"
-        "- priority: exactly one of: high, medium, low. Trivial/no-content mail → low. "
-        "Urgent deadlines, money, legal, security, exec/VIP → high when a response is actually needed.\n"
+        "  • respond = the sender wants you to do something that needs a human reply or decision: "
+        "especially scheduling a meeting or call, answering a question, approving something, or any concrete ask. "
+        "Requests to meet, call, find time, sync, or discuss something → ALWAYS respond (not ignore).\n"
+        "  • ignore = truly nothing to do: newsletters, marketing, automated FYI, or a message with NO real request "
+        "(e.g. subject and body are only a single filler word like \"test\" or \"hi\" with no ask).\n"
+        "  • confirmation = receipts, order/shipping notices, OTP/codes, or passive calendar invites you only need to glance at.\n"
+        "- priority: high, medium, or low.\n"
+        "  • high: time-sensitive, explicit deadline, urgent language, security/money/legal, or important meeting/call request.\n"
+        "  • medium: normal work requests including routine meeting scheduling that needs a reply.\n"
+        "  • low: only for noise or trivial no-ask messages as under \"ignore\".\n"
+        "If vip is true, increase priority one level when any response is needed.\n"
         "- reason: max 12 words.\n"
-        "promotional/newsletter → ignore; explicit ask/deadline/money/legal/customer/manager → respond; "
-        "receipt/order/code/verification → confirmation. vip true → bias priority up only when a response is warranted.\n"
+        "Examples (different treatments): "
+        "\"Can we meet Tuesday to discuss the project?\" → respond, medium or high, not ignore. "
+        "Subject/body only \"test\" with no request → ignore, low.\n"
         "Return JSON with top-level key \"items\": array of objects with keys id, summary, action, priority, reason. "
         "Include every input id exactly once."
     )
@@ -291,7 +332,7 @@ def classify_emails_batch(
     try:
         completion = client.chat.completions.create(
             model=settings.openai_model,
-            temperature=0.15,
+            temperature=0.28,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system},
@@ -441,8 +482,8 @@ MOBILE_APP_HTML = """<!DOCTYPE html>
     h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 20px; letter-spacing: -0.02em; }
     button.primary {
       border: none; border-radius: 14px; padding: 16px 20px; font-size: 1.05rem; font-weight: 600;
-      background: linear-gradient(145deg, #f7d54a, #e6b012); color: #1a1508; cursor: pointer;
-      box-shadow: 0 4px 20px rgba(230, 176, 18, 0.4);
+      background: #dcd4a8; color: #3a3830; cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
     }
     button.primary:disabled { opacity: 0.55; cursor: wait; }
     button.secondary {
@@ -522,6 +563,21 @@ def root() -> RedirectResponse:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/debug/persistence")
+def debug_persistence() -> dict[str, Any]:
+    """Check whether Microsoft token cache survives on disk (Render: mount volume at /data)."""
+    path = TOKEN_CACHE_PATH
+    exists = path.is_file()
+    size = path.stat().st_size if exists else 0
+    return {
+        "data_dir": str(_DATA_DIR),
+        "token_cache_path": str(path),
+        "token_cache_exists": exists,
+        "token_cache_bytes": size,
+        "hint": "If token_cache_exists is false after sign-in, DATA_DIR is not on a persistent disk.",
+    }
 
 
 @app.get("/mobile", response_class=HTMLResponse)
@@ -692,7 +748,15 @@ async def digest(access_key: str | None = Query(None)) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     for msg_id, email in pending:
         addr = sender_email(email)
-        ai = ai_by_id.get(msg_id, {})
+        raw_ai = ai_by_id.get(msg_id, {})
+        triage = refine_triage_with_heuristics(
+            email,
+            {
+                "action": raw_ai.get("action", "respond"),
+                "priority": raw_ai.get("priority", "medium"),
+                "reason": raw_ai.get("reason", ""),
+            },
+        )
         results.append(
             {
                 "id": msg_id,
@@ -700,10 +764,10 @@ async def digest(access_key: str | None = Query(None)) -> dict[str, Any]:
                 "sender_email": addr or None,
                 "subject": clean_text(email.get("subject", "")),
                 "received": email.get("receivedDateTime"),
-                "action": ai.get("action", "respond"),
-                "priority": ai.get("priority", "medium"),
-                "reason": ai.get("reason", ""),
-                "summary": ai.get("summary", "No summary."),
+                "action": triage["action"],
+                "priority": triage["priority"],
+                "reason": triage["reason"],
+                "summary": raw_ai.get("summary", "No summary."),
                 "web_link": email.get("webLink"),
             }
         )
