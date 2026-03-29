@@ -438,12 +438,11 @@ MOBILE_APP_HTML = """<!DOCTYPE html>
       padding: max(16px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
       display: flex; flex-direction: column; align-items: stretch;
     }
-    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.02em; }
-    p.sub { margin: 0 0 20px; font-size: 0.85rem; color: #8b98a8; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 20px; letter-spacing: -0.02em; }
     button.primary {
       border: none; border-radius: 14px; padding: 16px 20px; font-size: 1.05rem; font-weight: 600;
-      background: linear-gradient(145deg, #3d8bfd, #2563eb); color: #fff; cursor: pointer;
-      box-shadow: 0 4px 20px rgba(37, 99, 235, 0.35);
+      background: linear-gradient(145deg, #f7d54a, #e6b012); color: #1a1508; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(230, 176, 18, 0.4);
     }
     button.primary:disabled { opacity: 0.55; cursor: wait; }
     button.secondary {
@@ -455,17 +454,13 @@ MOBILE_APP_HTML = """<!DOCTYPE html>
       font-size: 0.95rem; line-height: 1.5; white-space: pre-wrap; min-height: 4em; color: #dce4ee;
     }
     .err { color: #f87171; border-color: #3f1d1d; background: #1a1010; }
-    .hint { font-size: 0.75rem; color: #5c6b7e; margin-top: auto; padding-top: 28px; line-height: 1.4; }
   </style>
 </head>
 <body>
   <h1>Inbox Brief</h1>
-  <p class="sub">Unread mail, AI-summarized from your inbox.</p>
-  <button type="button" class="primary" id="go">Brief my inbox</button>
+  <button type="button" class="primary" id="go">Run</button>
   <button type="button" class="secondary" id="speak" disabled>Read aloud</button>
   <div id="out" aria-live="polite"></div>
-  <p class="hint">Tip: Safari → Share → Add to Home Screen. If you set DIGEST_ACCESS_KEY on the server, open this page once with <code>?access_key=YOUR_SECRET</code> so it can save the key.<br />
-  Host the app on a small cloud service so it works when your computer is off.</p>
   <script>
     (function() {
       const p = new URLSearchParams(location.search);
