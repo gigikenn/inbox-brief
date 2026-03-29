@@ -191,6 +191,24 @@ def sender_email(message: dict[str, Any]) -> str:
     )
 
 
+def sender_display_name(message: dict[str, Any]) -> str:
+    """Graph 'name' for speech/UI; never the raw address (unless Graph has no name)."""
+    ea = message.get("from", {}).get("emailAddress", {}) or {}
+    raw_name = (ea.get("name") or "").strip()
+    if raw_name and "@" not in raw_name:
+        return raw_name
+    email = (ea.get("address") or "").strip().lower()
+    if not email:
+        return "Unknown sender"
+    local, _, _rest = email.partition("@")
+    if not local:
+        return "Unknown sender"
+    pretty = re.sub(r"[._-]+", " ", local).strip()
+    if not pretty or pretty.isdigit():
+        return "Someone"
+    return pretty.title()
+
+
 def should_ignore(sender: str, settings: Settings) -> bool:
     if sender in settings.ignore_senders:
         return True
@@ -241,7 +259,8 @@ def classify_emails_batch(
         payload.append(
             {
                 "id": msg_id,
-                "sender": sender,
+                "sender_name": sender_display_name(email),
+                "sender_email": sender,
                 "vip": sender in settings.vip_senders,
                 "subject": clean_text(email.get("subject", ""))[:220],
                 "preview": clean_text(email.get("bodyPreview", ""))[:450],
@@ -252,12 +271,18 @@ def classify_emails_batch(
         "You triage work email. For EACH item you MUST write an original summary in your own words — "
         "never copy or paste the preview text; paraphrase what the sender wants.\n"
         "Rules per item:\n"
-        "- summary: max 2 short sentences OR 240 characters, whichever is shorter. Plain language.\n"
+        "- summary: max 2 short sentences OR 240 characters, whichever is shorter. Plain language. "
+        "Never include email addresses or domains in the summary; refer to people by context only if needed.\n"
         "- action: exactly one of: respond, ignore, confirmation.\n"
-        "- priority: exactly one of: high, medium, low.\n"
+        "  • respond = they need a reply, decision, or real follow-up from you.\n"
+        "  • ignore = nothing to do (noise, FYI, auto mail, or no real request). Trivial or empty content "
+        "(e.g. subject/body is only \"test\", \"hi\", \"ok\", placeholders, or has no ask) → ignore, not respond.\n"
+        "  • confirmation = receipt, order, code, verification, calendar accept-type notices.\n"
+        "- priority: exactly one of: high, medium, low. Trivial/no-content mail → low. "
+        "Urgent deadlines, money, legal, security, exec/VIP → high when a response is actually needed.\n"
         "- reason: max 12 words.\n"
         "promotional/newsletter → ignore; explicit ask/deadline/money/legal/customer/manager → respond; "
-        "receipt/order/code/verification → confirmation. vip true → bias priority up.\n"
+        "receipt/order/code/verification → confirmation. vip true → bias priority up only when a response is warranted.\n"
         "Return JSON with top-level key \"items\": array of objects with keys id, summary, action, priority, reason. "
         "Include every input id exactly once."
     )
@@ -266,7 +291,7 @@ def classify_emails_batch(
     try:
         completion = client.chat.completions.create(
             model=settings.openai_model,
-            temperature=0.2,
+            temperature=0.15,
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": system},
@@ -314,11 +339,11 @@ def _ai_results_for_emails(
         if mid in by_id:
             continue
         subj = clean_text(em.get("subject", ""))[:120]
-        snd = sender_email(em) or "unknown"
+        who = sender_display_name(em)
         by_id[mid] = {
-            "summary": f"Unread from {snd}: {subj or 'no subject'}."[:240],
-            "action": "respond",
-            "priority": "medium",
+            "summary": f"Unread from {who}: {subj or 'no subject'}."[:240],
+            "action": "ignore",
+            "priority": "low",
             "reason": "AI batch did not return this id",
         }
     return by_id
@@ -361,6 +386,15 @@ def priority_rank(value: str) -> int:
     return {"high": 0, "medium": 1, "low": 2}.get(value, 1)
 
 
+def _spoken_action_clause(action: str) -> str:
+    a = (action or "").lower()
+    if a == "ignore":
+        return "No action needed."
+    if a == "confirmation":
+        return "Worth a quick look if it is yours."
+    return "Needs a reply when you can."
+
+
 def build_spoken_digest(items: list[dict[str, Any]]) -> str:
     if not items:
         return "No unread emails need attention right now."
@@ -368,9 +402,10 @@ def build_spoken_digest(items: list[dict[str, Any]]) -> str:
     top = items[:8]
     lines = [f"You have {len(items)} unread emails after filtering."]
     for idx, item in enumerate(top, start=1):
+        who = item.get("sender") or "Unknown sender"
         lines.append(
-            f"{idx}. {item['priority'].upper()} - {item['sender']}. {item['summary']} "
-            f"Action: {item['action']}."
+            f"{idx}. {item['priority'].upper()} priority, from {who}. {item['summary']} "
+            f"{_spoken_action_clause(item.get('action', ''))}"
         )
     return " ".join(lines)
 
@@ -661,12 +696,13 @@ async def digest(access_key: str | None = Query(None)) -> dict[str, Any]:
 
     results: list[dict[str, Any]] = []
     for msg_id, email in pending:
-        sender = sender_email(email)
+        addr = sender_email(email)
         ai = ai_by_id.get(msg_id, {})
         results.append(
             {
                 "id": msg_id,
-                "sender": sender or "unknown sender",
+                "sender": sender_display_name(email),
+                "sender_email": addr or None,
                 "subject": clean_text(email.get("subject", "")),
                 "received": email.get("receivedDateTime"),
                 "action": ai.get("action", "respond"),
