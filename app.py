@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -17,6 +18,8 @@ from openai import OpenAI
 from starlette.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 load_dotenv()
+
+log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
 _DATA_DIR = Path(os.getenv("DATA_DIR", str(BASE_DIR))).resolve()
@@ -122,10 +125,34 @@ def get_msal_app(settings: Settings) -> msal.PublicClientApplication:
     return app
 
 
-def persist_cache(app: msal.PublicClientApplication) -> None:
+def persist_cache(app: msal.PublicClientApplication, *, strict: bool = False) -> None:
+    """Write MSAL token cache to disk. strict=True on sign-in so we fail if /data is not writable."""
     cache = app.token_cache
-    if cache.has_state_changed:
-        TOKEN_CACHE_PATH.write_text(cache.serialize())
+    if not cache.has_state_changed:
+        return
+    try:
+        TOKEN_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        TOKEN_CACHE_PATH.write_text(cache.serialize(), encoding="utf-8")
+    except OSError as exc:
+        log.error("Could not persist token cache to %s: %s", TOKEN_CACHE_PATH, exc)
+        if strict:
+            raise RuntimeError(
+                f"Signed in but could not save tokens to {TOKEN_CACHE_PATH}. "
+                "On Render: add a persistent disk with mount path exactly /data "
+                "(and use an instance type that supports disks). "
+                "Otherwise every deploy or sleep wipes the container and you must sign in again."
+            ) from exc
+
+
+def data_dir_is_writable() -> bool:
+    try:
+        _DATA_DIR.mkdir(parents=True, exist_ok=True)
+        probe = _DATA_DIR / ".inbox_brief_write_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
 
 
 def _jwt_payload_unverified(access_token: str) -> dict[str, Any]:
@@ -181,7 +208,7 @@ def auth_complete_device_code(settings: Settings) -> dict[str, Any]:
     flow = json.loads(DEVICE_FLOW_PATH.read_text())
     app = get_msal_app(settings)
     token_result = app.acquire_token_by_device_flow(flow)
-    persist_cache(app)
+    persist_cache(app, strict=True)
     if "access_token" not in token_result:
         raise RuntimeError(f"Sign-in failed: {token_result.get('error_description', token_result)}")
     DEVICE_FLOW_PATH.unlink(missing_ok=True)
@@ -459,6 +486,18 @@ app = FastAPI(title="Outlook AI Briefing")
 @app.on_event("startup")
 def _ensure_data_dir() -> None:
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if not data_dir_is_writable():
+        log.error(
+            "DATA_DIR %s is not writable. Microsoft tokens cannot be saved; "
+            "you will appear logged out after every restart.",
+            _DATA_DIR,
+        )
+    elif Path("/.dockerenv").exists() and _DATA_DIR.resolve() == BASE_DIR.resolve():
+        log.warning(
+            "DATA_DIR is the app directory (%s) inside Docker — usually ephemeral. "
+            "Mount a volume at /data and keep DATA_DIR=/data (see Dockerfile).",
+            _DATA_DIR,
+        )
 
 # Add to Home Screen on iPhone: open http://<mac-ip>:8000/mobile → Share → Add to Home Screen.
 MOBILE_APP_HTML = """<!DOCTYPE html>
@@ -571,12 +610,23 @@ def debug_persistence() -> dict[str, Any]:
     path = TOKEN_CACHE_PATH
     exists = path.is_file()
     size = path.stat().st_size if exists else 0
+    mtime_utc: str | None = None
+    if exists:
+        mtime_utc = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+    writable = data_dir_is_writable()
     return {
         "data_dir": str(_DATA_DIR),
+        "data_dir_writable": writable,
         "token_cache_path": str(path),
         "token_cache_exists": exists,
         "token_cache_bytes": size,
-        "hint": "If token_cache_exists is false after sign-in, DATA_DIR is not on a persistent disk.",
+        "token_cache_modified_utc": mtime_utc,
+        "docker_container": Path("/.dockerenv").exists(),
+        "hint_if_you_reauth_daily": (
+            "Render free web services sleep after idle time; each new container has an empty disk unless "
+            "you attach a persistent disk with mount path /data. Without it, login never survives sleep or "
+            "redeploy. Also upgrade to a plan that supports disks if the Disks option is missing."
+        ),
     }
 
 
